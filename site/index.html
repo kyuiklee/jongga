@@ -203,6 +203,10 @@ nav button[aria-current=page]{color:var(--ink)}
           <button data-v="on" aria-pressed="true">손절 적용</button><button data-v="off" aria-pressed="false">손절 없음</button>
         </div>
       </div>
+      <div class="ctl-row"><span>지수 급락일 매수 안 함</span><span class="mute" style="font-size:12.5px">추천일 지수 하락 기준</span></div>
+      <div class="seg" role="group" aria-label="지수 급락일 제외" id="btDip">
+        <button data-v="off" aria-pressed="true">끔</button><button data-v="1" aria-pressed="false">-1%</button><button data-v="1.5" aria-pressed="false">-1.5%</button><button data-v="2" aria-pressed="false">-2%</button><button data-v="3" aria-pressed="false">-3%</button>
+      </div>
       <div class="ctl-row"><label for="btScore">최소 점수</label><output id="btScoreV">0점</output></div>
       <input type="range" id="btScore" min="0" max="90" step="5" value="0">
       <div class="ctl-row"><label for="btTop">하루 매수 종목 (점수 상위)</label><output id="btTopV">10개</output></div>
@@ -217,7 +221,7 @@ nav button[aria-current=page]{color:var(--ink)}
     <div id="btBucket"></div>
     <h2 class="sec-title">월별 누적</h2>
     <div id="btMonth" class="hero"></div>
-    <p class="note">누적은 매일 그날 추천 종목에 자금을 똑같이 나눠 사고 다음날 판다고 가정한 복리입니다. 보유 기간이 N일이면 자금을 N등분해 매일 1/N씩 사고 N일 뒤 판다고 가정합니다. 아직 N일이 지나지 않은 최근 매매는 빠집니다. 현재 상장 종목만 대상이라 상장폐지 종목이 빠져 있고, 상한가 종목은 실제로는 종가에 사기 어려울 수 있어 실제보다 좋게 나올 수 있습니다.</p>
+    <p class="note">누적은 매일 그날 추천 종목에 자금을 똑같이 나눠 사고 다음날 판다고 가정한 복리입니다. 지수 급락일 옵션은 추천일에 그 종목이 속한 시장(코스피 또는 코스닥) 지수 등락률로 판단합니다. 보유 기간이 N일이면 자금을 N등분해 매일 1/N씩 사고 N일 뒤 판다고 가정합니다. 아직 N일이 지나지 않은 최근 매매는 빠집니다. 현재 상장 종목만 대상이라 상장폐지 종목이 빠져 있고, 상한가 종목은 실제로는 종가에 사기 어려울 수 있어 실제보다 좋게 나올 수 있습니다.</p>
   </section>
 </div>
 
@@ -335,10 +339,16 @@ function drawLog(){
 }
 
 /* ---------- 백테스트 ---------- */
-const BT={per:6,type:'B',mode:'open',mkt:'A',stop:'on'};
+const BT={per:6,type:'B',mode:'open',mkt:'A',stop:'on',dip:'off'};
 const MKT={K:'코스피',Q:'코스닥'};
 function segBind(id,key,num){$$(`#${id} button`).forEach(b=>b.onclick=()=>{BT[key]=num?+b.dataset.v:b.dataset.v;
   $$(`#${id} button`).forEach(x=>x.setAttribute('aria-pressed',x===b));store.set('bt_'+key,BT[key]);drawBT();});}
+// 날짜별 지수 등락률 (코스피 K / 코스닥 Q)
+let IXCHG=null;
+function ixChg(r){
+  if(!IXCHG){IXCHG={K:{},Q:{}};[['kospi','K'],['kosdaq','Q']].forEach(([k,m])=>{const b=BENCH&&BENCH[k];if(!b)return;
+    for(let i=1;i<b.length;i++) IXCHG[m][b[i][0]]=(b[i][1]/b[i-1][1]-1)*100;});}
+  const v=IXCHG[r.mkt||'K'][r.date];return v==null?null:v;}
 const stat=g=>({n:g.length,w:g.filter(r=>r.ret>0).length/g.length*100,m:g.reduce((x,r)=>x+r.ret,0)/g.length});
 function benchCurve(key,d0,d1){const b=BENCH&&BENCH[key];if(!b)return[];const k=b.filter(x=>x[0]>=d0&&x[0]<=d1);
   return k.length>1?k.map(x=>[x[0],(x[1]/k[0][1]-1)*100]):[];}
@@ -349,7 +359,13 @@ function drawBT(){
   const last=ROWS[ROWS.length-1].date, st=new Date(last+'T00:00:00');st.setMonth(st.getMonth()-BT.per);
   const sd=`${st.getFullYear()}-${String(st.getMonth()+1).padStart(2,'0')}-${String(st.getDate()).padStart(2,'0')}`;
   // 유형·시장·점수로 거른 뒤, 날짜·유형별로 점수 높은 순 상위 N개만 매수
-  const pool=ROWS.filter(r=>r.date>sd&&(BT.type==='A'||r.type===BT.type)&&(BT.mkt==='A'||r.mkt===BT.mkt)&&r.score>=minS);
+  const dip=BT.dip==='off'?null:+BT.dip;
+  const base=ROWS.filter(r=>r.date>sd&&(BT.type==='A'||r.type===BT.type)&&(BT.mkt==='A'||r.mkt===BT.mkt)&&r.score>=minS);
+  // 추천일에 그 종목 시장 지수가 dip% 이상 빠졌으면 매수하지 않음
+  const skipped=dip==null?[]:base.filter(r=>{const v=ixChg(r);return v!=null&&v<=-dip;});
+  const skipSet=new Set(skipped);
+  const pool=dip==null?base:base.filter(r=>!skipSet.has(r));
+  const skippedDays=new Set(skipped.map(r=>r.date)).size;
   const grp={};pool.forEach(r=>(grp[r.date+r.type]=grp[r.date+r.type]||[]).push(r));
   const N=BT.mode==='open'?1:+$('#btHold').value, useStop=BT.stop==='on';
   // 한 건의 수익률: 시가 매도 / N일째 종가 매도(손절 적용 시 그 전에 손절가에 걸리면 손절)
@@ -378,7 +394,8 @@ function drawBT(){
   const dayWin=days.filter(d=>byDay[d].reduce((a,b)=>a+b,0)>0).length/days.length*100;
   const c0=days[0], c1=curve[curve.length-1][0];
   const kc=benchCurve('kospi',c0,c1), qc=benchCurve('kosdaq',c0,c1);
-  const modeTxt=BT.mode==='open'?'다음날 시가 매도':`${N}일째 종가 매도 · ${useStop?'손절 적용':'손절 없음'}`;
+  const modeTxt=(BT.mode==='open'?'다음날 시가 매도':`${N}일째 종가 매도 · ${useStop?'손절 적용':'손절 없음'}`)
+    +(dip==null?'':` · 지수 -${dip}% 이하인 날 쉼 (${skippedDays}일)`);
   const stopRate=rs.filter(r=>r.stopped).length/rs.length*100;
   const endv=c=>c.length?c[c.length-1][1]:null;
   const vs=[[ '코스피',endv(kc)],['코스닥',endv(qc)]].filter(x=>x[1]!=null).map(([n,v])=>`${n} <b class="${cls(v)}">${pct(v,1)}</b>`).join('&nbsp;&nbsp;');
@@ -422,7 +439,7 @@ function svgCurve(c,k,q){
 ['btScore','btTop','btFee','btHold'].forEach(id=>{const el=$('#'+id),out=$('#'+id+'V'),u={btScore:'점',btTop:'개',btFee:'%',btHold:'일'}[id];
   el.value=store.get(id,el.value);out.textContent=el.value+u;
   el.oninput=()=>{out.textContent=el.value+u;store.set(id,el.value);drawBT();if(id==='btFee')drawLog();};});
-[['btPer','per',1],['btType','type',0],['btMktSel','mkt',0],['btMode','mode',0],['btStop','stop',0]].forEach(([id,k,n])=>{
+[['btPer','per',1],['btType','type',0],['btMktSel','mkt',0],['btMode','mode',0],['btStop','stop',0],['btDip','dip',0]].forEach(([id,k,n])=>{
   BT[k]=store.get('bt_'+k,BT[k]);$$(`#${id} button`).forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v)===String(BT[k])));segBind(id,k,n);});
 
 /* ---------- 탭 ---------- */
