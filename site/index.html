@@ -84,6 +84,9 @@ input[type=range]{width:100%;accent-color:var(--ink)}
 .rk{font-size:13px;font-weight:700;color:var(--sub);text-align:center}
 .nm{font-size:16px;font-weight:680;letter-spacing:-.01em;line-height:1.25}
 .nm small{font-size:12px;font-weight:500;color:var(--sub);margin-left:4px}
+.mk{display:inline-block;font-size:11px;font-weight:700;line-height:1.5;padding:0 6px;border-radius:5px;margin-left:6px;vertical-align:2px}
+.mk.K{background:var(--ink);color:var(--bg)}
+.mk.Q{background:var(--surface);color:var(--ink);box-shadow:inset 0 0 0 1.2px var(--ink)}
 .px{font-size:13px;margin-top:2px}
 .px b{font-weight:650}
 .sc{display:flex;flex-direction:column;align-items:flex-end;gap:5px;min-width:64px}
@@ -187,6 +190,9 @@ nav button[aria-current=page]{color:var(--ink)}
       <div class="seg" role="group" aria-label="유형" id="btType" style="margin-top:8px">
         <button data-v="B" aria-pressed="true">돌파형</button><button data-v="P" aria-pressed="false">눌림목형</button><button data-v="A" aria-pressed="false">둘 다</button>
       </div>
+      <div class="seg" role="group" aria-label="시장" id="btMktSel" style="margin-top:8px">
+        <button data-v="A" aria-pressed="true">전체 시장</button><button data-v="K" aria-pressed="false">코스피만</button><button data-v="Q" aria-pressed="false">코스닥만</button>
+      </div>
       <div class="seg" role="group" aria-label="매도 방식" id="btMode" style="margin-top:8px">
         <button data-v="open" aria-pressed="true">다음날 시가 매도</button><button data-v="close" aria-pressed="false">종가 매도·손절</button>
       </div>
@@ -198,6 +204,8 @@ nav button[aria-current=page]{color:var(--ink)}
       <input type="range" id="btFee" min="0" max="0.6" step="0.05" value="0.25">
     </div>
     <div class="hero" id="btHero"></div>
+    <h2 class="sec-title">시장별</h2>
+    <div id="btMkt"></div>
     <h2 class="sec-title">점수 구간별</h2>
     <div id="btBucket"></div>
     <h2 class="sec-title">월별 누적</h2>
@@ -255,7 +263,7 @@ function drawHeader(){
   else if(d.trade_date!==t.date && !['Sat','Sun'].includes(t.wd) && t.h*60+t.m>=915){st.className='chip stale';st.textContent='오늘 결과 준비 중';}
   else if(d.status==='preview'){st.className='chip preview';st.textContent=`예비 · ${d.generated_at.slice(11)} 기준`;}
   else {st.className='chip final';st.textContent='종가 확정';}
-  $('#idx').innerHTML=Object.entries(d.market||{}).map(([k,v])=>`${k} <b class="${cls(v)}">${pct(v)}</b>`).join('&nbsp;&nbsp; ');
+  $('#idx').innerHTML=Object.entries(d.market||{}).map(([k,v])=>`${{KOSPI:'코스피',KOSDAQ:'코스닥'}[k]||k} <b class="${cls(v)}">${pct(v)}</b>`).join('&nbsp;&nbsp; ');
   const w=[];
   if(d.friday) w.push('금요일입니다. 주말 동안 해외 변수가 쌓여 월요일 갭 위험이 큽니다.');
   if(Object.values(d.market||{}).some(v=>v<=-1.5)) w.push('지수가 크게 빠진 날입니다. 종가매매 성공률이 떨어지는 환경입니다.');
@@ -271,13 +279,13 @@ function drawPicks(){
     const loss=(r.stop/r.close-1)*100;
     return `<div class="item"><button aria-expanded="false">
       <span class="rk">${r.rank}</span>
-      <span><div class="nm">${esc(r.name)}<small>${r.code}</small></div>
+      <span><div class="nm">${esc(r.name)}<span class="mk ${r.market==='KOSDAQ'?'Q':'K'}">${r.market==='KOSDAQ'?'코스닥':'코스피'}</span></div>
       <div class="px"><b>${fmt(r.close)}</b> <b class="${cls(r.chg)}">${pct(r.chg)}</b> <span class="mute">· ${fmt(r.amt)}억</span></div></span>
       <span class="sc"><strong>${Math.round(r.score)}</strong><span class="meter"><i style="width:${Math.min(100,r.score)}%"></i></span></span>
     </button><div class="detail">
       ${r.tags?`<div class="tags">${r.tags.split(' ').map(t=>`<span>${esc(t)}</span>`).join('')}</div>`:''}
       <dl><dt>손절 참고</dt><dd>${fmt(r.stop)}원 <span class="mute">(${pct(loss,1)})</span></dd>${ex}
-      <dt>고가 대비</dt><dd>${r.gap_hi>0?'-'+r.gap_hi+'%':'고가 마감'}</dd><dt>시장</dt><dd>${r.market}</dd></dl>
+      <dt>고가 대비</dt><dd>${r.gap_hi>0?'-'+r.gap_hi+'%':'고가 마감'}</dd><dt>종목코드</dt><dd>${r.code}</dd></dl>
       <a class="go" href="https://m.stock.naver.com/domestic/stock/${r.code}/total" target="_blank" rel="noopener">네이버 차트 열기</a>
     </div></div>`;}).join('');
 }
@@ -308,76 +316,87 @@ function drawLog(){
   if(TODAY && !ROWS.some(r=>r.date===TODAY.trade_date)){
     const p=[...TODAY.breakout.map(r=>({...r,type:'B'})),...TODAY.pullback.map(r=>({...r,type:'P'}))];
     if(p.length) html+=`<div class="day"><h3>${TODAY.trade_date.slice(5).replace('-','/')} 추천<span class="mute">다음 거래일 장 마감 후 결과</span></h3>`+
-      p.map(r=>`<div class="row"><span class="ty ${r.type}">${r.type==='B'?'돌파':'눌림'}</span><span>${esc(r.name)}</span><span class="s">${Math.round(r.score)}점</span><span class="r mute">대기</span></div>`).join('')+'</div>';
+      p.map(r=>`<div class="row"><span class="ty ${r.type}">${r.type==='B'?'돌파':'눌림'}</span><span>${esc(r.name)}<span class="mk ${r.market==='KOSDAQ'?'Q':'K'}">${r.market==='KOSDAQ'?'코스닥':'코스피'}</span></span><span class="s">${Math.round(r.score)}점</span><span class="r mute">대기</span></div>`).join('')+'</div>';
   }
   for(const d of recent){
     const a=rs.filter(r=>r.date===d).sort((x,y)=>(x.type+x.rank).localeCompare(y.type+y.rank,undefined,{numeric:true}));
     const m=a.reduce((x,r)=>x+r.ret,0)/a.length;
     html+=`<div class="day"><h3>${d.slice(5).replace('-','/')} 추천<span class="${cls(m)}">평균 ${pct(m)}</span></h3>`+
-      a.map(r=>`<div class="row"><span class="ty ${r.type}">${r.type==='B'?'돌파':'눌림'}</span><span>${esc(r.name)}</span><span class="s">${Math.round(r.score)}점</span><span class="r ${cls(r.ret)}">${pct(r.ret)}</span></div>`).join('')+'</div>';
+      a.map(r=>`<div class="row"><span class="ty ${r.type}">${r.type==='B'?'돌파':'눌림'}</span><span>${esc(r.name)}${r.mkt?`<span class="mk ${r.mkt}">${r.mkt==='Q'?'코스닥':'코스피'}</span>`:''}</span><span class="s">${Math.round(r.score)}점</span><span class="r ${cls(r.ret)}">${pct(r.ret)}</span></div>`).join('')+'</div>';
   }
   $('#logdays').innerHTML=html;
 }
 
 /* ---------- 백테스트 ---------- */
-const BT={per:6,type:'B',mode:'open'};
+const BT={per:6,type:'B',mode:'open',mkt:'A'};
+const MKT={K:'코스피',Q:'코스닥'};
 function segBind(id,key,num){$$(`#${id} button`).forEach(b=>b.onclick=()=>{BT[key]=num?+b.dataset.v:b.dataset.v;
   $$(`#${id} button`).forEach(x=>x.setAttribute('aria-pressed',x===b));store.set('bt_'+key,BT[key]);drawBT();});}
+const stat=g=>({n:g.length,w:g.filter(r=>r.ret>0).length/g.length*100,m:g.reduce((x,r)=>x+r.ret,0)/g.length});
+function benchCurve(key,d0,d1){const b=BENCH&&BENCH[key];if(!b)return[];const k=b.filter(x=>x[0]>=d0&&x[0]<=d1);
+  return k.length>1?k.map(x=>[x[0],(x[1]/k[0][1]-1)*100]):[];}
 function drawBT(){
   if(!ROWS.length){$('#btHero').innerHTML='<div class="empty">백테스트 데이터가 아직 없습니다.</div>';return;}
   const F=fee(), minS=+$('#btScore').value, top=+$('#btTop').value;
   const last=ROWS[ROWS.length-1].date, st=new Date(last+'T00:00:00');st.setMonth(st.getMonth()-BT.per);
   const sd=`${st.getFullYear()}-${String(st.getMonth()+1).padStart(2,'0')}-${String(st.getDate()).padStart(2,'0')}`;
-  const rs=ROWS.filter(r=>r.date>sd&&(BT.type==='A'||r.type===BT.type)&&r.score>=minS&&r.rank<=top)
+  // 유형·시장·점수로 거른 뒤, 날짜·유형별로 점수 높은 순 상위 N개만 매수
+  const pool=ROWS.filter(r=>r.date>sd&&(BT.type==='A'||r.type===BT.type)&&(BT.mkt==='A'||r.mkt===BT.mkt)&&r.score>=minS);
+  const grp={};pool.forEach(r=>(grp[r.date+r.type]=grp[r.date+r.type]||[]).push(r));
+  const rs=Object.values(grp).flatMap(g=>g.sort((a,b)=>b.score-a.score).slice(0,top))
                .map(r=>({...r,ret:(BT.mode==='open'?r.r_open:r.r_close)-F}));
-  if(!rs.length){$('#btHero').innerHTML='<div class="empty">조건에 맞는 매매가 없습니다. 최소 점수를 낮추거나 기간을 늘려 보세요.</div>';$('#btBucket').innerHTML='';$('#btMonth').innerHTML='';return;}
+  if(!rs.length){$('#btHero').innerHTML='<div class="empty">조건에 맞는 매매가 없습니다. 최소 점수를 낮추거나 기간을 늘려 보세요.</div>';
+    ['#btBucket','#btMonth','#btMkt'].forEach(x=>$(x).innerHTML='');return;}
   const byDay={};rs.forEach(r=>(byDay[r.date]=byDay[r.date]||[]).push(r.ret));
   const days=Object.keys(byDay).sort();let eq=1,peak=1,mdd=0;const curve=[];
   for(const d of days){const m=byDay[d].reduce((a,b)=>a+b,0)/byDay[d].length/100;eq*=1+m;peak=Math.max(peak,eq);mdd=Math.min(mdd,eq/peak-1);curve.push([d,(eq-1)*100]);}
-  const cum=(eq-1)*100, win=rs.filter(r=>r.ret>0).length/rs.length*100, avg=rs.reduce((a,r)=>a+r.ret,0)/rs.length;
+  const cum=(eq-1)*100, S=stat(rs);
   const dayWin=days.filter(d=>byDay[d].reduce((a,b)=>a+b,0)>0).length/days.length*100;
-  let kos=null, kcurve=[];
-  if(BENCH&&BENCH.kospi){const k=BENCH.kospi.filter(x=>x[0]>=days[0]&&x[0]<=days[days.length-1]);
-    if(k.length>1){kcurve=k.map(x=>[x[0],(x[1]/k[0][1]-1)*100]);kos=kcurve[kcurve.length-1][1];}}
-  $('#btHero').innerHTML=`<div class="mute" style="font-size:13px">${days[0].replaceAll('-','.')} ~ ${days[days.length-1].replaceAll('-','.')} 누적 수익</div>
+  const kc=benchCurve('kospi',days[0],days[days.length-1]), qc=benchCurve('kosdaq',days[0],days[days.length-1]);
+  const endv=c=>c.length?c[c.length-1][1]:null;
+  const vs=[[ '코스피',endv(kc)],['코스닥',endv(qc)]].filter(x=>x[1]!=null).map(([n,v])=>`${n} <b class="${cls(v)}">${pct(v,1)}</b>`).join('&nbsp;&nbsp;');
+  $('#btHero').innerHTML=`<div class="mute" style="font-size:13px">${days[0].replaceAll('-','.')} ~ ${days[days.length-1].replaceAll('-','.')} 누적 수익${BT.mkt==='A'?'':` · ${MKT[BT.mkt]} 종목만`}</div>
     <div class="big ${cls(cum)}">${pct(cum,1)}</div>
-    <div class="vs">${kos==null?'':`같은 기간 코스피 <b class="${cls(kos)}">${pct(kos,1)}</b>`}</div>
-    ${svgCurve(curve,kcurve)}
-    <div class="stats"><div>매매<b>${rs.length}건</b></div><div>승률<b>${win.toFixed(0)}%</b></div>
-    <div>건당 평균<b class="${cls(avg)}">${pct(avg)}</b></div><div>최대 낙폭<b class="dn">${(mdd*100).toFixed(1)}%</b></div></div>
+    <div class="vs">${vs?'같은 기간 '+vs:''}</div>
+    ${svgCurve(curve,kc,qc)}
+    <div class="stats"><div>매매<b>${S.n}건</b></div><div>승률<b>${S.w.toFixed(0)}%</b></div>
+    <div>건당 평균<b class="${cls(S.m)}">${pct(S.m)}</b></div><div>최대 낙폭<b class="dn">${(mdd*100).toFixed(1)}%</b></div></div>
     <div class="note" style="margin-bottom:0">거래한 날 ${days.length}일 중 수익 난 날 ${dayWin.toFixed(0)}%</div>`;
+  const tbl=(head,rows)=>`<table><tr><th>${head}</th><th>건수</th><th>승률</th><th>건당 평균</th></tr>`+
+    rows.map(([n,g])=>{if(!g.length)return'';const s=stat(g);
+      return `<tr><td>${n}</td><td>${s.n}</td><td>${s.w.toFixed(0)}%</td><td class="${cls(s.m)}">${pct(s.m)}</td></tr>`;}).join('')+'</table>';
+  $('#btMkt').innerHTML=tbl('시장',[['코스피',rs.filter(r=>r.mkt==='K')],['코스닥',rs.filter(r=>r.mkt==='Q')]]);
   const cuts=[[80,999,'80점 이상'],[70,80,'70~79점'],[60,70,'60~69점'],[50,60,'50~59점'],[0,50,'50점 미만']];
-  $('#btBucket').innerHTML=`<table><tr><th>점수</th><th>건수</th><th>승률</th><th>건당 평균</th></tr>`+
-    cuts.map(([a,b,n])=>{const g=rs.filter(r=>r.score>=a&&r.score<b);if(!g.length)return'';
-      const w=g.filter(r=>r.ret>0).length/g.length*100,m=g.reduce((x,r)=>x+r.ret,0)/g.length;
-      return `<tr><td>${n}</td><td>${g.length}</td><td>${w.toFixed(0)}%</td><td class="${cls(m)}">${pct(m)}</td></tr>`;}).join('')+'</table>';
+  $('#btBucket').innerHTML=tbl('점수',cuts.map(([a,b,n])=>[n,rs.filter(r=>r.score>=a&&r.score<b)]));
   const mo={};days.forEach(d=>{const k=d.slice(0,7);mo[k]=(mo[k]||1)*(1+byDay[d].reduce((a,b)=>a+b,0)/byDay[d].length/100);});
   const mv=Object.entries(mo).map(([k,v])=>[k,(v-1)*100]), mx=Math.max(1,...mv.map(x=>Math.abs(x[1])));
   $('#btMonth').innerHTML=mv.map(([k,v])=>`<div class="mbar"><span>${k.slice(2).replace('-','.')}</span><span class="t"><i style="${v>=0?`left:50%;width:${v/mx*50}%;background:var(--up)`:`right:50%;width:${-v/mx*50}%;background:var(--down)`}"></i></span><span class="v ${cls(v)}">${pct(v,1)}</span></div>`).join('');
 }
-function svgCurve(c,k){
-  const W=340,H=150,pl=34,pr=6,pt=8,pb=18, all=[...c.map(x=>x[1]),...k.map(x=>x[1]),0];
+function svgCurve(c,k,q){
+  const W=340,H=160,pl=34,pr=6,pt=18,pb=18, all=[...c.map(x=>x[1]),...k.map(x=>x[1]),...q.map(x=>x[1]),0];
   let lo=Math.min(...all),hi=Math.max(...all);if(hi-lo<1){hi+=.5;lo-=.5;}const pad=(hi-lo)*.08;lo-=pad;hi+=pad;
   const d0=new Date(c[0][0]).getTime(),d1=Math.max(d0+1,new Date(c[c.length-1][0]).getTime());
   const X=d=>pl+(new Date(d).getTime()-d0)/(d1-d0)*(W-pl-pr), Y=v=>pt+(hi-v)/(hi-lo)*(H-pt-pb);
   const path=a=>a.map((p,i)=>(i?'L':'M')+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)).join('');
   const lc=c[c.length-1][1]>=0?'var(--up)':'var(--down)';
-  return `<svg class="eq" viewBox="0 0 ${W} ${H}" role="img" aria-label="누적 수익 그래프">
+  const leg=(x,dash,label,col,w)=>`<line x1="${x}" x2="${x+16}" y1="7" y2="7" stroke="${col}" stroke-width="${w}" ${dash?`stroke-dasharray="${dash}"`:''}/><text x="${x+20}" y="10" font-size="10" fill="var(--sub)">${label}</text>`;
+  return `<svg class="eq" viewBox="0 0 ${W} ${H}" role="img" aria-label="누적 수익 그래프: 전략, 코스피, 코스닥">
+    ${leg(pl,'',`전략`,lc,2)}${k.length?leg(pl+62,'4 3','코스피','var(--sub)',1.3):''}${q.length?leg(pl+130,'1 3','코스닥','var(--sub)',1.6):''}
     <line x1="${pl}" x2="${W-pr}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line)"/>
     <text x="${pl-4}" y="${Y(hi-pad)+4}" font-size="10" fill="var(--sub)" text-anchor="end">${Math.round(hi-pad)}%</text>
     <text x="${pl-4}" y="${Y(0)+3}" font-size="10" fill="var(--sub)" text-anchor="end">0%</text>
     <text x="${pl-4}" y="${Y(lo+pad)}" font-size="10" fill="var(--sub)" text-anchor="end">${Math.round(lo+pad)}%</text>
-    ${k.length?`<path d="${path(k)}" fill="none" stroke="var(--sub)" stroke-width="1.2" stroke-dasharray="3 3"/>`:''}
+    ${k.length?`<path d="${path(k)}" fill="none" stroke="var(--sub)" stroke-width="1.3" stroke-dasharray="4 3"/>`:''}
+    ${q.length?`<path d="${path(q)}" fill="none" stroke="var(--sub)" stroke-width="1.6" stroke-dasharray="1 3" stroke-linecap="round"/>`:''}
     <path d="${path(c)}" fill="none" stroke="${lc}" stroke-width="2" stroke-linejoin="round"/>
     <text x="${pl}" y="${H-4}" font-size="10" fill="var(--sub)">${c[0][0].slice(2).replaceAll('-','.')}</text>
     <text x="${W-pr}" y="${H-4}" font-size="10" fill="var(--sub)" text-anchor="end">${c[c.length-1][0].slice(2).replaceAll('-','.')}</text>
-    ${k.length?`<text x="${W-pr}" y="${pt+8}" font-size="10" fill="var(--sub)" text-anchor="end">점선: 코스피</text>`:''}
   </svg>`;
 }
 ['btScore','btTop','btFee'].forEach(id=>{const el=$('#'+id),out=$('#'+id+'V'),u={btScore:'점',btTop:'개',btFee:'%'}[id];
   el.value=store.get(id,el.value);out.textContent=el.value+u;
   el.oninput=()=>{out.textContent=el.value+u;store.set(id,el.value);drawBT();if(id==='btFee')drawLog();};});
-[['btPer','per',1],['btType','type',0],['btMode','mode',0]].forEach(([id,k,n])=>{
+[['btPer','per',1],['btType','type',0],['btMktSel','mkt',0],['btMode','mode',0]].forEach(([id,k,n])=>{
   BT[k]=store.get('bt_'+k,BT[k]);$$(`#${id} button`).forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v)===String(BT[k])));segBind(id,k,n);});
 
 /* ---------- 탭 ---------- */

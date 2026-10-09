@@ -46,9 +46,11 @@ def main():
     days = counts[counts >= len(hist) * 0.5].index
     print(f"지표 계산 완료: {len(days)}거래일, 최종일 {last.date()}")
 
+    # 과거 기록은 하루 상위 20개까지 저장 → 앱에서 시장(코스피/코스닥)별로 걸러도 상위 종목을 고를 수 있게
+    P_store = {**P, "top_n": max(P["top_n"], 20)}
     picks = []
     for d, day in F[F.index.isin(days)].groupby(level=0):
-        pk = pick_day(day, P)
+        pk = pick_day(day, P_store)
         if len(pk):
             picks.append(pk.assign(date=d))
     T = pd.concat(picks)
@@ -58,7 +60,7 @@ def main():
 
     # ----- 오늘(최종 거래일) 추천 -----
     trade_day = days.max()
-    today_rows = T[T["date"] == trade_day].sort_values(["type", "rank"])
+    today_rows = T[(T["date"] == trade_day) & (T["rank"] <= P["top_n"])].sort_values(["type", "rank"])
     is_today = trade_day.date() == now.date()
     hm = now.hour * 100 + now.minute
     status = "final" if (not is_today or hm >= 1530) else "preview"
@@ -101,14 +103,14 @@ def main():
     done["stop_hit"] = (done["n_low"] <= done["stop"]).astype(int)
     done = done.sort_values(["date", "type", "rank"])
     trades = {
-        "fields": ["date", "type", "rank", "code", "name", "score", "close", "chg", "r_open", "r_close", "r_high", "stop_hit"],
+        "fields": ["date", "type", "rank", "code", "name", "score", "close", "chg", "r_open", "r_close", "r_high", "stop_hit", "mkt"],
         "note": "수익률은 비용 차감 전. 앱에서 비용을 뺍니다.",
         "rows": [[f"{r.date:%Y-%m-%d}", "B" if r.type == "돌파" else "P", int(r.rank), r.code, r.name, r2(r.score, 1),
-                  int(r.close), r2(r.chg), r2(r.r_open), r2(r.r_close), r2(r.r_high), int(r.stop_hit)]
+                  int(r.close), r2(r.chg), r2(r.r_open), r2(r.r_close), r2(r.r_high), int(r.stop_hit),
+                  "Q" if r.market == "KOSDAQ" else "K"]
                  for r in done.itertuples()],
     }
-    kospi = idx.get("KOSPI")
-    bench = {"kospi": [[f"{d:%Y-%m-%d}", r2(v)] for d, v in kospi.items() if d >= days.min()]} if kospi is not None else {}
+    bench = {k.lower(): [[f"{d:%Y-%m-%d}", r2(v)] for d, v in s.items() if d >= days.min()] for k, s in idx.items()}
 
     os.makedirs(OUT, exist_ok=True)
     for name, obj in (("today.json", today), ("trades.json", trades), ("bench.json", bench)):
