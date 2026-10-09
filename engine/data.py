@@ -19,7 +19,7 @@ def _clean(df):
     df = df.copy()
     df["code"] = df["code"].astype(str).str.zfill(6)
     df = df[df["market"].astype(str).str.contains("KOSPI|KOSDAQ") & ~df["market"].astype(str).str.contains("KONEX")]
-    df = df[df["code"].str.fullmatch(r"\d{5}0")]                         # 우선주 제외
+    df = df[df["code"].str.fullmatch(r"[0-9A-Z]{5}0")]                    # 우선주 제외 (신규 영문 혼합 코드 포함)
     df = df[~df["name"].astype(str).str.contains(r"스팩|\d+호|리츠|ETN|ETF")]  # 스팩·리츠 제외
     df["market"] = np.where(df["market"].astype(str).str.contains("KOSDAQ"), "KOSDAQ", "KOSPI")
     return df[["code", "name", "market", "shares"]].drop_duplicates("code").reset_index(drop=True)
@@ -69,6 +69,53 @@ def load_universe():
         print(f"종목 목록: 저장된 목록 사용 {len(df)}개")
         return df
     raise RuntimeError("종목 목록을 가져오지 못했습니다")
+
+
+ETFS_CSV = os.path.join(ROOT, "engine", "etfs.csv")
+
+
+def _etf_fdr():
+    import FinanceDataReader as fdr
+    df = fdr.StockListing("ETF/KR")
+    return df.rename(columns={"Symbol": "code", "Name": "name"})[["code", "name"]]
+
+
+def _etf_pykrx():
+    from pykrx import stock
+    d = pd.Timestamp.now(tz="Asia/Seoul")
+    for _ in range(10):
+        codes = stock.get_etf_ticker_list(d.strftime("%Y%m%d"))
+        if codes:
+            return pd.DataFrame({"code": codes, "name": [stock.get_etf_ticker_name(c) for c in codes]})
+        d -= pd.Timedelta(days=1)
+    raise RuntimeError("pykrx ETF 목록 없음")
+
+
+def load_etfs(exclude_pattern):
+    """ETF 목록 (레버리지·2X·3X 등 제외)"""
+    df = None
+    for f in (_etf_fdr, _etf_pykrx):
+        try:
+            d = f()
+            if len(d) > 300:
+                df = d
+                print(f"ETF 목록: {f.__name__} {len(d)}개")
+                break
+        except Exception as e:
+            print(f"  {f.__name__} 실패: {e}")
+    if df is None:
+        if not os.path.exists(ETFS_CSV):
+            print("ETF 목록을 가져오지 못해 ETF는 건너뜀")
+            return pd.DataFrame(columns=["code", "name", "market", "shares"])
+        df = pd.read_csv(ETFS_CSV, dtype={"code": str})
+        print(f"ETF 목록: 저장된 목록 사용 {len(df)}개")
+    df["code"] = df["code"].astype(str).str.zfill(6)
+    df = df[df["code"].str.fullmatch(r"[0-9A-Z]{6}")]
+    df.to_csv(ETFS_CSV, index=False, encoding="utf-8-sig")
+    before = len(df)
+    df = df[~df["name"].astype(str).str.contains(exclude_pattern, case=False, regex=True)]
+    print(f"  레버리지 등 제외 {before - len(df)}개 → {len(df)}개")
+    return df.assign(market="ETF", shares=np.nan)[["code", "name", "market", "shares"]].drop_duplicates("code")
 
 
 # ---------------- 일봉 ----------------

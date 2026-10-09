@@ -2,7 +2,6 @@
   "min_price": 1000,
   "top_n": 10,
   "max_candidates": 60,
-
   "min_chg": 3.0,
   "max_chg": 25.0,
   "min_amount_eok": 300,
@@ -13,12 +12,26 @@
   "require_breakout": false,
   "stop_mode": "당일저가",
   "stop_pct": 3.0,
-
   "use_pullback": true,
   "pb_min_amount_eok": 50,
   "pb_min_surge": 30.0,
   "pb_max_dd": 20.0,
-
   "fee_pct": 0.25,
-  "backtest_days": 500
+  "backtest_days": 500,
+  "etf_top_n": 5,
+  "etf": {
+    "_설명": "ETF는 주식보다 움직임이 작아 기준을 따로 둠. 여기 없는 항목은 위 주식 기준과 같음",
+    "min_chg": 1.5,
+    "max_chg": 15.0,
+    "min_amount_eok": 30,
+    "max_gap_hi": 1.0,
+    "min_vol_ratio": 1.5,
+    "max_run5": 20.0,
+    "chg_sweet": 4.0,
+    "pb_min_amount_eok": 10,
+    "pb_min_surge": 10.0,
+    "pb_max_dd": 10.0,
+    "pb_min_dd": 2.0,
+    "exclude_pattern": "레버리지|2X|3X|울트라"
+  }
 }
