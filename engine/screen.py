@@ -61,10 +61,9 @@ def pick_day(day, P):
     b, brk20, brk60 = b[keep], brk20[keep], brk60[keep]
     if len(b):
         aligned = (b["ma5"] > b["ma20"]) & (b["ma20"] > b["ma60"])
-        cs = P.get("chg_sweet", 10)          # 등락률 점수 만점 지점 (주식 +10%, ETF는 더 낮게)
         s = ((b["amt_eok"] / 1000).clip(upper=1) * 25 + b["pos"] * 20 +
              np.where(brk60, 15, np.where(brk20, 8, 0)) + np.where(aligned, 10, 0) +
-             (b["vol_ratio"] / 5).clip(upper=1) * 15 + (1 - (b["chg"] - cs).abs() / cs).clip(lower=0) * 15)
+             (b["vol_ratio"] / 5).clip(upper=1) * 15 + (1 - (b["chg"] - 10).abs() / 10).clip(lower=0) * 15)
         if P["stop_mode"] == "당일저가":
             stop = np.minimum(b["low"], b["ma5"]).round()
         else:
@@ -85,7 +84,7 @@ def pick_day(day, P):
         p = p.sort_values("size", ascending=False).head(P["max_candidates"] * 2)
         p = p[p["nbar"] >= 61]
         near = np.minimum(p["d5"], p["d20"])
-        keep = ((p["surge"] >= P["pb_min_surge"]) & p["dd"].between(-P["pb_max_dd"], -P.get("pb_min_dd", 3)) &
+        keep = ((p["surge"] >= P["pb_min_surge"]) & p["dd"].between(-P["pb_max_dd"], -3) &
                 (near <= 3) & (p["close"] >= p["ma60"]) & (p["vol_dry"] <= 0.5))
         p, near = p[keep], near[keep]
         if len(p):

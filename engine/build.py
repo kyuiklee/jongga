@@ -25,14 +25,10 @@ def main():
     now = kst_now()
     print(f"실행 {now:%Y-%m-%d %H:%M} KST")
 
-    stocks = D.load_universe()
-    etfs = D.load_etfs(P["etf"]["exclude_pattern"])
-    univ = pd.concat([stocks, etfs[~etfs["code"].isin(stocks["code"])]], ignore_index=True)
+    univ = D.load_universe()
     meta = univ.set_index("code")
-    etf_codes = set(etfs["code"])
-    P_etf = {**P, **{k: v for k, v in P["etf"].items() if not k.startswith("_") and k != "exclude_pattern"}}
     hist = D.load_histories(list(univ["code"]))
-    if len(hist) < 1000 or len(set(hist) - etf_codes) < 1000:
+    if len(hist) < 1000:
         raise SystemExit(f"일봉 수집 종목이 너무 적습니다 ({len(hist)}) — 데이터 소스 문제")
 
     keep_days = int(P.get("backtest_days", 500)) + 5
@@ -46,21 +42,17 @@ def main():
     F = F[F.index >= F.index.max() - pd.Timedelta(days=int(keep_days * 1.5))]
     last = F.index.max()
     # 거래일 = 전체 종목의 절반 이상이 일봉을 가진 날 (일부 종목만 있는 날짜 제외)
-    counts = F[~F["code"].isin(etf_codes)].groupby(level=0).size()
-    days = counts[counts >= len(set(hist) - etf_codes) * 0.5].index
+    counts = F.groupby(level=0).size()
+    days = counts[counts >= len(hist) * 0.5].index
     print(f"지표 계산 완료: {len(days)}거래일, 최종일 {last.date()}")
 
     # 과거 기록은 하루 상위 20개까지 저장 → 앱에서 시장(코스피/코스닥)별로 걸러도 상위 종목을 고를 수 있게
     P_store = {**P, "top_n": max(P["top_n"], 20)}
-    P_etf_store = {**P_etf, "top_n": max(P["etf_top_n"], 10)}
     picks = []
     for d, day in F[F.index.isin(days)].groupby(level=0):
-        is_etf = day["code"].isin(etf_codes)
-        for sub, pp in ((day[~is_etf], P_store), (day[is_etf], P_etf_store)):
-            if len(sub):
-                pk = pick_day(sub, pp)
-                if len(pk):
-                    picks.append(pk.assign(date=d))
+        pk = pick_day(day, P_store)
+        if len(pk):
+            picks.append(pk.assign(date=d))
     T = pd.concat(picks)
     T["name"] = T["code"].map(meta["name"])
     T["market"] = T["code"].map(meta["market"])
@@ -68,11 +60,7 @@ def main():
 
     # ----- 오늘(최종 거래일) 추천 -----
     trade_day = days.max()
-    is_etf_row = T["market"] == "ETF"
-    lim = np.where(is_etf_row, P["etf_top_n"], P["top_n"])
-    today_rows = T[(T["date"] == trade_day) & (T["rank"] <= lim)].sort_values(["type", "rank"])
-    stock_today = today_rows[today_rows["market"] != "ETF"]
-    etf_today = today_rows[today_rows["market"] == "ETF"]
+    today_rows = T[(T["date"] == trade_day) & (T["rank"] <= P["top_n"])].sort_values(["type", "rank"])
     is_today = trade_day.date() == now.date()
     hm = now.hour * 100 + now.minute
     status = "final" if (not is_today or hm >= 1530) else "preview"
@@ -87,7 +75,7 @@ def main():
     def card(r):
         d = {"code": r.code, "name": r.name, "market": r.market, "rank": int(r.rank), "score": r2(r.score, 1),
              "close": int(r.close), "chg": r2(r.chg), "amt": int(round(r.amt_eok)), "gap_hi": r2(r.gap_hi, 1),
-             "stop": int(r.stop), "tags": r.tags, "type": "B" if r.type == "돌파" else "P"}
+             "stop": int(r.stop), "tags": r.tags}
         if r.type == "돌파":
             d.update(vol_ratio=r2(r.vol_ratio, 1), run5=r2(r.run5, 1))
         else:
@@ -100,9 +88,8 @@ def main():
         "status": status,
         "market": market,
         "friday": trade_day.weekday() == 4,
-        "breakout": [card(r) for r in stock_today[stock_today["type"] == "돌파"].itertuples()],
-        "pullback": [card(r) for r in stock_today[stock_today["type"] == "눌림"].itertuples()],
-        "etf": [card(r) for r in etf_today.sort_values(["type", "rank"]).itertuples()],
+        "breakout": [card(r) for r in today_rows[today_rows["type"] == "돌파"].itertuples()],
+        "pullback": [card(r) for r in today_rows[today_rows["type"] == "눌림"].itertuples()],
         "config": {k: P[k] for k in ("top_n", "min_amount_eok", "min_chg", "max_chg", "fee_pct")},
     }
 
@@ -120,7 +107,7 @@ def main():
         "note": "수익률은 비용 차감 전. 앱에서 비용을 뺍니다.",
         "rows": [[f"{r.date:%Y-%m-%d}", "B" if r.type == "돌파" else "P", int(r.rank), r.code, r.name, r2(r.score, 1),
                   int(r.close), r2(r.chg), r2(r.r_open), r2(r.r_close), r2(r.r_high), int(r.stop_hit),
-                  {"KOSDAQ": "Q", "ETF": "E"}.get(r.market, "K")]
+                  "Q" if r.market == "KOSDAQ" else "K"]
                  for r in done.itertuples()],
     }
     bench = {k.lower(): [[f"{d:%Y-%m-%d}", r2(v)] for d, v in s.items() if d >= days.min()] for k, s in idx.items()}
@@ -129,7 +116,7 @@ def main():
     for name, obj in (("today.json", today), ("trades.json", trades), ("bench.json", bench)):
         with open(os.path.join(OUT, name), "w", encoding="utf-8") as f:
             json.dump(obj, f, ensure_ascii=False, separators=(",", ":"))
-    print(f"저장: 오늘 추천 돌파 {len(today['breakout'])} / 눌림 {len(today['pullback'])} / ETF {len(today['etf'])}, "
+    print(f"저장: 오늘 추천 돌파 {len(today['breakout'])} / 눌림 {len(today['pullback'])}, "
           f"과거 거래 {len(trades['rows'])}건, 상태 {status} ({time.time() - t0:.0f}초)")
 
 

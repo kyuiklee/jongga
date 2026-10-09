@@ -87,8 +87,6 @@ input[type=range]{width:100%;accent-color:var(--ink)}
 .mk{display:inline-block;font-size:11px;font-weight:700;line-height:1.5;padding:0 6px;border-radius:5px;margin-left:6px;vertical-align:2px}
 .mk.K{background:var(--ink);color:var(--bg)}
 .mk.Q{background:var(--surface);color:var(--ink);box-shadow:inset 0 0 0 1.2px var(--ink)}
-.mk.E{background:var(--track);color:var(--sub)}
-.ty.inl{display:inline-block;padding:0 6px;margin-left:6px;vertical-align:2px;line-height:1.5}
 .px{font-size:13px;margin-top:2px}
 .px b{font-weight:650}
 .sc{display:flex;flex-direction:column;align-items:flex-end;gap:5px;min-width:64px}
@@ -167,13 +165,12 @@ nav button[aria-current=page]{color:var(--ink)}
       <div class="seg" role="group" aria-label="유형">
         <button data-k="breakout" aria-pressed="true">돌파형</button>
         <button data-k="pullback" aria-pressed="false">눌림목형</button>
-        <button data-k="etf" aria-pressed="false">ETF</button>
       </div>
       <div class="ctl-row"><label for="minS">최소 점수</label><output id="minSv">0점</output></div>
       <input type="range" id="minS" min="0" max="90" step="5" value="0">
     </div>
     <div class="list" id="picks"></div>
-    <p class="note">종목을 누르면 손절 참고가와 차트 링크가 열립니다. ETF는 움직임이 작아 기준을 따로 적용하며(상승률 1.5% 이상 등), 레버리지·2X·3X 상품은 제외합니다. 결과는 조건 검색이며 매수 권유가 아닙니다.</p>
+    <p class="note">종목을 누르면 손절 참고가와 차트 링크가 열립니다. 결과는 조건 검색이며 매수 권유가 아닙니다.</p>
   </section>
 
   <!-- ===== 기록 ===== -->
@@ -194,7 +191,7 @@ nav button[aria-current=page]{color:var(--ink)}
         <button data-v="B" aria-pressed="true">돌파형</button><button data-v="P" aria-pressed="false">눌림목형</button><button data-v="A" aria-pressed="false">둘 다</button>
       </div>
       <div class="seg" role="group" aria-label="시장" id="btMktSel" style="margin-top:8px">
-        <button data-v="A" aria-pressed="true">주식 전체</button><button data-v="K" aria-pressed="false">코스피</button><button data-v="Q" aria-pressed="false">코스닥</button><button data-v="E" aria-pressed="false">ETF</button>
+        <button data-v="A" aria-pressed="true">전체 시장</button><button data-v="K" aria-pressed="false">코스피만</button><button data-v="Q" aria-pressed="false">코스닥만</button>
       </div>
       <div class="seg" role="group" aria-label="매도 방식" id="btMode" style="margin-top:8px">
         <button data-v="open" aria-pressed="true">다음날 시가 매도</button><button data-v="close" aria-pressed="false">종가 매도·손절</button>
@@ -207,13 +204,13 @@ nav button[aria-current=page]{color:var(--ink)}
       <input type="range" id="btFee" min="0" max="0.6" step="0.05" value="0.25">
     </div>
     <div class="hero" id="btHero"></div>
-    <h2 class="sec-title">시장별 (같은 조건)</h2>
+    <h2 class="sec-title">시장별</h2>
     <div id="btMkt"></div>
     <h2 class="sec-title">점수 구간별</h2>
     <div id="btBucket"></div>
     <h2 class="sec-title">월별 누적</h2>
     <div id="btMonth" class="hero"></div>
-    <p class="note">ETF는 매도 거래세가 없어 비용에서 0.2%p를 빼고 계산합니다(최소 0.03%). 누적은 매일 그날 추천 종목에 자금을 똑같이 나눠 사고 다음날 판다고 가정한 복리입니다. 현재 상장 종목만 대상이라 상장폐지 종목이 빠져 있고, 상한가 종목은 실제로는 종가에 사기 어려울 수 있어 실제보다 좋게 나올 수 있습니다.</p>
+    <p class="note">누적은 매일 그날 추천 종목에 자금을 똑같이 나눠 사고 다음날 판다고 가정한 복리입니다. 현재 상장 종목만 대상이라 상장폐지 종목이 빠져 있고, 상한가 종목은 실제로는 종가에 사기 어려울 수 있어 실제보다 좋게 나올 수 있습니다.</p>
   </section>
 </div>
 
@@ -277,13 +274,12 @@ function drawPicks(){
   const min=+$('#minS').value, arr=(TODAY[kind]||[]).filter(r=>r.score>=min);
   if(!arr.length){$('#picks').innerHTML=`<div class="empty">${(TODAY[kind]||[]).length?'이 점수 이상인 종목이 없습니다. 최소 점수를 낮춰 보세요.':'오늘은 조건에 맞는 종목이 없습니다.'}</div>`;return;}
   $('#picks').innerHTML=arr.map(r=>{
-    const isB=kind==='etf'?r.type==='B':kind==='breakout';
-    const ex=isB?`<dt>거래량</dt><dd>20일 평균의 ${r.vol_ratio}배</dd><dt>최근 5일</dt><dd class="${cls(r.run5)}">${pct(r.run5,1)}</dd>`
+    const ex=kind==='breakout'?`<dt>거래량</dt><dd>20일 평균의 ${r.vol_ratio}배</dd><dt>최근 5일</dt><dd class="${cls(r.run5)}">${pct(r.run5,1)}</dd>`
                               :`<dt>최근 급등</dt><dd class="up">${pct(r.surge,0)}</dd><dt>고점 대비</dt><dd class="dn">${pct(r.dd,1)}</dd>`;
     const loss=(r.stop/r.close-1)*100;
     return `<div class="item"><button aria-expanded="false">
       <span class="rk">${r.rank}</span>
-      <span><div class="nm">${esc(r.name)}${kind==='etf'?`<span class="ty ${r.type} inl">${r.type==='B'?'돌파':'눌림'}</span>`:mkBadge(r)}</div>
+      <span><div class="nm">${esc(r.name)}<span class="mk ${r.market==='KOSDAQ'?'Q':'K'}">${r.market==='KOSDAQ'?'코스닥':'코스피'}</span></div>
       <div class="px"><b>${fmt(r.close)}</b> <b class="${cls(r.chg)}">${pct(r.chg)}</b> <span class="mute">· ${fmt(r.amt)}억</span></div></span>
       <span class="sc"><strong>${Math.round(r.score)}</strong><span class="meter"><i style="width:${Math.min(100,r.score)}%"></i></span></span>
     </button><div class="detail">
@@ -302,42 +298,38 @@ $('#minS').oninput=e=>{$('#minSv').textContent=e.target.value+'점';drawPicks();
 let ROWS=[];
 function prepTrades(){const f=TR.fields;ROWS=TR.rows.map(r=>Object.fromEntries(f.map((k,i)=>[k,r[i]])));}
 const fee=()=>+$('#btFee').value;
-// ETF는 매도 거래세가 없어 비용에서 약 0.2%p를 뺌 (최소 0.03%)
-const costOf=(r,F)=>r.mkt==='E'||r.market==='ETF'?Math.max(0.03,F-0.2):F;
-const mkCode=r=>r.mkt||({KOSDAQ:'Q',ETF:'E'}[r.market]||'K');
-const mkBadge=r=>{const m=mkCode(r);return `<span class="mk ${m}">${{K:'코스피',Q:'코스닥',E:'ETF'}[m]}</span>`;};
 
 /* ---------- 기록 ---------- */
 function drawLog(){
   const F=fee(); $$('.feeTxt').forEach(x=>x.textContent=F+'%');
   if(!ROWS.length){$('#logsum').innerHTML='<div class="empty">아직 기록이 없습니다.</div>';return;}
   const dates=[...new Set(ROWS.map(r=>r.date))].sort().reverse();
-  const recent=dates.slice(0,20), rs=ROWS.filter(r=>recent.includes(r.date)).map(r=>({...r,ret:r.r_open-costOf(r,F)}));
+  const recent=dates.slice(0,20), rs=ROWS.filter(r=>recent.includes(r.date)).map(r=>({...r,ret:r.r_open-F}));
   const win=rs.filter(r=>r.ret>0).length/rs.length*100, avg=rs.reduce((a,r)=>a+r.ret,0)/rs.length;
-  const by=t=>t==='E'?rs.filter(r=>r.mkt==='E'):rs.filter(r=>r.type===t&&r.mkt!=='E');
+  const by=t=>rs.filter(r=>r.type===t);
   const line=(t,n)=>{const a=by(t);if(!a.length)return'';const w=a.filter(r=>r.ret>0).length/a.length*100,m=a.reduce((x,r)=>x+r.ret,0)/a.length;
     return `<div><span class="mute">${n}</span><b>${w.toFixed(0)}% · <span class="${cls(m)}">${pct(m)}</span></b></div>`;};
   $('#logsum').innerHTML=`<div class="mute" style="font-size:13px">최근 ${recent.length}거래일 · ${rs.length}건, 다음날 시가 매도 기준</div>
     <div class="big ${cls(avg)}">${pct(avg)}</div><div class="vs">건당 평균 · 승률 ${win.toFixed(0)}%</div>
-    <div class="stats" style="grid-template-columns:1fr 1fr 1fr">${line('B','돌파형(주식)')}${line('P','눌림목형(주식)')}${line('E','ETF')}</div>`;
+    <div class="stats" style="grid-template-columns:1fr 1fr">${line('B','돌파형 승률·평균')}${line('P','눌림목형 승률·평균')}</div>`;
   let html='';
   if(TODAY && !ROWS.some(r=>r.date===TODAY.trade_date)){
-    const p=[...TODAY.breakout.map(r=>({...r,type:'B'})),...TODAY.pullback.map(r=>({...r,type:'P'})),...(TODAY.etf||[])];
+    const p=[...TODAY.breakout.map(r=>({...r,type:'B'})),...TODAY.pullback.map(r=>({...r,type:'P'}))];
     if(p.length) html+=`<div class="day"><h3>${TODAY.trade_date.slice(5).replace('-','/')} 추천<span class="mute">다음 거래일 장 마감 후 결과</span></h3>`+
-      p.map(r=>`<div class="row"><span class="ty ${r.type}">${r.type==='B'?'돌파':'눌림'}</span><span>${esc(r.name)}${mkBadge(r)}</span><span class="s">${Math.round(r.score)}점</span><span class="r mute">대기</span></div>`).join('')+'</div>';
+      p.map(r=>`<div class="row"><span class="ty ${r.type}">${r.type==='B'?'돌파':'눌림'}</span><span>${esc(r.name)}<span class="mk ${r.market==='KOSDAQ'?'Q':'K'}">${r.market==='KOSDAQ'?'코스닥':'코스피'}</span></span><span class="s">${Math.round(r.score)}점</span><span class="r mute">대기</span></div>`).join('')+'</div>';
   }
   for(const d of recent){
     const a=rs.filter(r=>r.date===d).sort((x,y)=>(x.type+x.rank).localeCompare(y.type+y.rank,undefined,{numeric:true}));
     const m=a.reduce((x,r)=>x+r.ret,0)/a.length;
     html+=`<div class="day"><h3>${d.slice(5).replace('-','/')} 추천<span class="${cls(m)}">평균 ${pct(m)}</span></h3>`+
-      a.map(r=>`<div class="row"><span class="ty ${r.type}">${r.type==='B'?'돌파':'눌림'}</span><span>${esc(r.name)}${r.mkt?mkBadge(r):''}</span><span class="s">${Math.round(r.score)}점</span><span class="r ${cls(r.ret)}">${pct(r.ret)}</span></div>`).join('')+'</div>';
+      a.map(r=>`<div class="row"><span class="ty ${r.type}">${r.type==='B'?'돌파':'눌림'}</span><span>${esc(r.name)}${r.mkt?`<span class="mk ${r.mkt}">${r.mkt==='Q'?'코스닥':'코스피'}</span>`:''}</span><span class="s">${Math.round(r.score)}점</span><span class="r ${cls(r.ret)}">${pct(r.ret)}</span></div>`).join('')+'</div>';
   }
   $('#logdays').innerHTML=html;
 }
 
 /* ---------- 백테스트 ---------- */
 const BT={per:6,type:'B',mode:'open',mkt:'A'};
-const MKT={K:'코스피',Q:'코스닥',E:'ETF'};
+const MKT={K:'코스피',Q:'코스닥'};
 function segBind(id,key,num){$$(`#${id} button`).forEach(b=>b.onclick=()=>{BT[key]=num?+b.dataset.v:b.dataset.v;
   $$(`#${id} button`).forEach(x=>x.setAttribute('aria-pressed',x===b));store.set('bt_'+key,BT[key]);drawBT();});}
 const stat=g=>({n:g.length,w:g.filter(r=>r.ret>0).length/g.length*100,m:g.reduce((x,r)=>x+r.ret,0)/g.length});
@@ -349,12 +341,10 @@ function drawBT(){
   const last=ROWS[ROWS.length-1].date, st=new Date(last+'T00:00:00');st.setMonth(st.getMonth()-BT.per);
   const sd=`${st.getFullYear()}-${String(st.getMonth()+1).padStart(2,'0')}-${String(st.getDate()).padStart(2,'0')}`;
   // 유형·시장·점수로 거른 뒤, 날짜·유형별로 점수 높은 순 상위 N개만 매수
-  // 유형·시장·점수로 거른 뒤, 날짜·유형별 점수 상위 N개만 매수. 'A'는 주식 전체(코스피+코스닥)
-  const select=mkt=>{const pool=ROWS.filter(r=>r.date>sd&&(BT.type==='A'||r.type===BT.type)&&(mkt==='A'?r.mkt!=='E':r.mkt===mkt)&&r.score>=minS);
-    const grp={};pool.forEach(r=>(grp[r.date+r.type]=grp[r.date+r.type]||[]).push(r));
-    return Object.values(grp).flatMap(g=>g.sort((a,b)=>b.score-a.score).slice(0,top))
-      .map(r=>({...r,ret:(BT.mode==='open'?r.r_open:r.r_close)-costOf(r,F)}));};
-  const rs=select(BT.mkt);
+  const pool=ROWS.filter(r=>r.date>sd&&(BT.type==='A'||r.type===BT.type)&&(BT.mkt==='A'||r.mkt===BT.mkt)&&r.score>=minS);
+  const grp={};pool.forEach(r=>(grp[r.date+r.type]=grp[r.date+r.type]||[]).push(r));
+  const rs=Object.values(grp).flatMap(g=>g.sort((a,b)=>b.score-a.score).slice(0,top))
+               .map(r=>({...r,ret:(BT.mode==='open'?r.r_open:r.r_close)-F}));
   if(!rs.length){$('#btHero').innerHTML='<div class="empty">조건에 맞는 매매가 없습니다. 최소 점수를 낮추거나 기간을 늘려 보세요.</div>';
     ['#btBucket','#btMonth','#btMkt'].forEach(x=>$(x).innerHTML='');return;}
   const byDay={};rs.forEach(r=>(byDay[r.date]=byDay[r.date]||[]).push(r.ret));
@@ -365,7 +355,7 @@ function drawBT(){
   const kc=benchCurve('kospi',days[0],days[days.length-1]), qc=benchCurve('kosdaq',days[0],days[days.length-1]);
   const endv=c=>c.length?c[c.length-1][1]:null;
   const vs=[[ '코스피',endv(kc)],['코스닥',endv(qc)]].filter(x=>x[1]!=null).map(([n,v])=>`${n} <b class="${cls(v)}">${pct(v,1)}</b>`).join('&nbsp;&nbsp;');
-  $('#btHero').innerHTML=`<div class="mute" style="font-size:13px">${days[0].replaceAll('-','.')} ~ ${days[days.length-1].replaceAll('-','.')} 누적 수익${BT.mkt==='A'?' · 주식 전체':` · ${MKT[BT.mkt]}만`}</div>
+  $('#btHero').innerHTML=`<div class="mute" style="font-size:13px">${days[0].replaceAll('-','.')} ~ ${days[days.length-1].replaceAll('-','.')} 누적 수익${BT.mkt==='A'?'':` · ${MKT[BT.mkt]} 종목만`}</div>
     <div class="big ${cls(cum)}">${pct(cum,1)}</div>
     <div class="vs">${vs?'같은 기간 '+vs:''}</div>
     ${svgCurve(curve,kc,qc)}
@@ -375,8 +365,7 @@ function drawBT(){
   const tbl=(head,rows)=>`<table><tr><th>${head}</th><th>건수</th><th>승률</th><th>건당 평균</th></tr>`+
     rows.map(([n,g])=>{if(!g.length)return'';const s=stat(g);
       return `<tr><td>${n}</td><td>${s.n}</td><td>${s.w.toFixed(0)}%</td><td class="${cls(s.m)}">${pct(s.m)}</td></tr>`;}).join('')+'</table>';
-  // 같은 조건(유형·점수·하루 종목 수)을 시장별로 따로 적용한 비교
-  $('#btMkt').innerHTML=tbl('시장',[['코스피만',select('K')],['코스닥만',select('Q')],['ETF만',select('E')]]);
+  $('#btMkt').innerHTML=tbl('시장',[['코스피',rs.filter(r=>r.mkt==='K')],['코스닥',rs.filter(r=>r.mkt==='Q')]]);
   const cuts=[[80,999,'80점 이상'],[70,80,'70~79점'],[60,70,'60~69점'],[50,60,'50~59점'],[0,50,'50점 미만']];
   $('#btBucket').innerHTML=tbl('점수',cuts.map(([a,b,n])=>[n,rs.filter(r=>r.score>=a&&r.score<b)]));
   const mo={};days.forEach(d=>{const k=d.slice(0,7);mo[k]=(mo[k]||1)*(1+byDay[d].reduce((a,b)=>a+b,0)/byDay[d].length/100);});
