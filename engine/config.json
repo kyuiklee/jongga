@@ -1,0 +1,24 @@
+{
+  "min_price": 1000,
+  "top_n": 10,
+  "max_candidates": 60,
+
+  "min_chg": 3.0,
+  "max_chg": 25.0,
+  "min_amount_eok": 300,
+  "min_pos": 0.8,
+  "max_gap_hi": 2.0,
+  "min_vol_ratio": 2.0,
+  "max_run5": 40.0,
+  "require_breakout": false,
+  "stop_mode": "당일저가",
+  "stop_pct": 3.0,
+
+  "use_pullback": true,
+  "pb_min_amount_eok": 50,
+  "pb_min_surge": 30.0,
+  "pb_max_dd": 20.0,
+
+  "fee_pct": 0.25,
+  "backtest_days": 500
+}
