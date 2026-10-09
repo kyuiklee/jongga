@@ -225,6 +225,7 @@ let TODAY=null, TR=null, BENCH=null, kind='breakout';
 function kst(){const p=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23',weekday:'short'}).formatToParts(new Date());
   const o={};p.forEach(x=>o[x.type]=x.value);return {date:`${o.year}-${o.month}-${o.day}`,h:+o.hour,m:+o.minute,wd:o.weekday};}
 
+function isHoliday(){const t=kst(),d=TODAY;return !!d && d.generated_at.slice(0,10)===t.date && d.generated_at.slice(11)>='15:30' && d.trade_date!==t.date;}
 /* ---------- 마감 시간표 ---------- */
 function drawClock(){
   const t=kst(), mins=t.h*60+t.m, wk=!['Sat','Sun'].includes(t.wd);
@@ -233,6 +234,7 @@ function drawClock(){
            [930,960,'시간외 종가','16:00까지 오늘 종가 그대로 매수 가능'],[960,1200,'애프터마켓','20:00까지 실시간 매매 (종가와 가격이 다를 수 있음)']];
   let ph='장 마감', hint='다음 거래일 15:20 전후에 다시 확인하세요';
   if(!wk){ph='휴장';hint='주말에는 거래가 없습니다';}
+  else if(isHoliday()){ph='휴장';hint='오늘은 휴장일입니다. 아래는 직전 거래일 추천입니다';}
   else if(mins<540){ph='장 시작 전';hint='08:00부터 넥스트레이드 프리마켓';}
   else for(const [a,b,n,h] of P) if(mins>=a&&mins<b){ph=n;hint=h;}
   $('#phase').textContent=ph; $('#phint').textContent=hint;
@@ -240,7 +242,7 @@ function drawClock(){
   const pos=m=>m<=960?(m-900)/60*75:75+(m-960)/240*25;
   const seg=[[900,920,'--phase-reg'],[920,930,'--phase-call'],[930,960,'--phase-ext'],[960,1200,'--phase-after']];
   $('#pbar').innerHTML=seg.map(([a,b,c])=>`<span style="width:${pos(b)-pos(a)}%;background:var(${c})"></span>`).join('')+
-    (wk&&mins>=900&&mins<=1200?`<i class="marker" style="left:calc(${pos(mins)}% - 1px)"></i>`:'');
+    (wk&&!isHoliday()&&mins>=900&&mins<=1200?`<i class="marker" style="left:calc(${pos(mins)}% - 1px)"></i>`:'');
 }
 
 /* ---------- 오늘 추천 ---------- */
@@ -249,7 +251,8 @@ function drawHeader(){
   const dt=new Date(d.trade_date+'T00:00:00'), wd='일월화수목금토'[dt.getDay()];
   $('#tdate').textContent=`${dt.getMonth()+1}월 ${dt.getDate()}일 (${wd}) 추천`;
   const st=$('#status');
-  if(d.trade_date!==t.date && !['Sat','Sun'].includes(t.wd) && t.h*60+t.m>=915){st.className='chip stale';st.textContent='오늘 결과 준비 중';}
+  if(isHoliday()){st.className='chip stale';st.textContent='오늘 휴장 · 직전 거래일';}
+  else if(d.trade_date!==t.date && !['Sat','Sun'].includes(t.wd) && t.h*60+t.m>=915){st.className='chip stale';st.textContent='오늘 결과 준비 중';}
   else if(d.status==='preview'){st.className='chip preview';st.textContent=`예비 · ${d.generated_at.slice(11)} 기준`;}
   else {st.className='chip final';st.textContent='종가 확정';}
   $('#idx').innerHTML=Object.entries(d.market||{}).map(([k,v])=>`${k} <b class="${cls(v)}">${pct(v)}</b>`).join('&nbsp;&nbsp; ');
@@ -387,7 +390,7 @@ async function load(){
   [TODAY,TR,BENCH]=await Promise.all([get('today.json'),get('trades.json'),get('bench.json')]);
   if(!TODAY){$('#tdate').textContent='데이터 없음';$('#picks').innerHTML='<div class="empty">아직 첫 검색이 실행되지 않았습니다. 평일 15시 이후 다시 열어 보세요.</div>';return;}
   if(TR)prepTrades();
-  drawHeader();drawPicks();drawLog();drawBT();
+  drawClock();drawHeader();drawPicks();drawLog();drawBT();
 }
 drawClock();setInterval(drawClock,30000);load();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){drawClock();load();}});
