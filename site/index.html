@@ -194,7 +194,14 @@ nav button[aria-current=page]{color:var(--ink)}
         <button data-v="A" aria-pressed="true">전체 시장</button><button data-v="K" aria-pressed="false">코스피만</button><button data-v="Q" aria-pressed="false">코스닥만</button>
       </div>
       <div class="seg" role="group" aria-label="매도 방식" id="btMode" style="margin-top:8px">
-        <button data-v="open" aria-pressed="true">다음날 시가 매도</button><button data-v="close" aria-pressed="false">종가 매도·손절</button>
+        <button data-v="open" aria-pressed="true">다음날 시가 매도</button><button data-v="close" aria-pressed="false">보유 후 종가 매도</button>
+      </div>
+      <div id="holdCtl" hidden>
+        <div class="ctl-row"><label for="btHold">보유 기간 (그날 종가에 매도)</label><output id="btHoldV">1일</output></div>
+        <input type="range" id="btHold" min="1" max="20" step="1" value="1">
+        <div class="seg" role="group" aria-label="손절" id="btStop" style="margin-top:10px">
+          <button data-v="on" aria-pressed="true">손절 적용</button><button data-v="off" aria-pressed="false">손절 없음</button>
+        </div>
       </div>
       <div class="ctl-row"><label for="btScore">최소 점수</label><output id="btScoreV">0점</output></div>
       <input type="range" id="btScore" min="0" max="90" step="5" value="0">
@@ -210,7 +217,7 @@ nav button[aria-current=page]{color:var(--ink)}
     <div id="btBucket"></div>
     <h2 class="sec-title">월별 누적</h2>
     <div id="btMonth" class="hero"></div>
-    <p class="note">누적은 매일 그날 추천 종목에 자금을 똑같이 나눠 사고 다음날 판다고 가정한 복리입니다. 현재 상장 종목만 대상이라 상장폐지 종목이 빠져 있고, 상한가 종목은 실제로는 종가에 사기 어려울 수 있어 실제보다 좋게 나올 수 있습니다.</p>
+    <p class="note">누적은 매일 그날 추천 종목에 자금을 똑같이 나눠 사고 다음날 판다고 가정한 복리입니다. 보유 기간이 N일이면 자금을 N등분해 매일 1/N씩 사고 N일 뒤 판다고 가정합니다. 아직 N일이 지나지 않은 최근 매매는 빠집니다. 현재 상장 종목만 대상이라 상장폐지 종목이 빠져 있고, 상한가 종목은 실제로는 종가에 사기 어려울 수 있어 실제보다 좋게 나올 수 있습니다.</p>
   </section>
 </div>
 
@@ -328,7 +335,7 @@ function drawLog(){
 }
 
 /* ---------- 백테스트 ---------- */
-const BT={per:6,type:'B',mode:'open',mkt:'A'};
+const BT={per:6,type:'B',mode:'open',mkt:'A',stop:'on'};
 const MKT={K:'코스피',Q:'코스닥'};
 function segBind(id,key,num){$$(`#${id} button`).forEach(b=>b.onclick=()=>{BT[key]=num?+b.dataset.v:b.dataset.v;
   $$(`#${id} button`).forEach(x=>x.setAttribute('aria-pressed',x===b));store.set('bt_'+key,BT[key]);drawBT();});}
@@ -336,6 +343,7 @@ const stat=g=>({n:g.length,w:g.filter(r=>r.ret>0).length/g.length*100,m:g.reduce
 function benchCurve(key,d0,d1){const b=BENCH&&BENCH[key];if(!b)return[];const k=b.filter(x=>x[0]>=d0&&x[0]<=d1);
   return k.length>1?k.map(x=>[x[0],(x[1]/k[0][1]-1)*100]):[];}
 function drawBT(){
+  $('#holdCtl').hidden=BT.mode==='open';
   if(!ROWS.length){$('#btHero').innerHTML='<div class="empty">백테스트 데이터가 아직 없습니다.</div>';return;}
   const F=fee(), minS=+$('#btScore').value, top=+$('#btTop').value;
   const last=ROWS[ROWS.length-1].date, st=new Date(last+'T00:00:00');st.setMonth(st.getMonth()-BT.per);
@@ -343,32 +351,50 @@ function drawBT(){
   // 유형·시장·점수로 거른 뒤, 날짜·유형별로 점수 높은 순 상위 N개만 매수
   const pool=ROWS.filter(r=>r.date>sd&&(BT.type==='A'||r.type===BT.type)&&(BT.mkt==='A'||r.mkt===BT.mkt)&&r.score>=minS);
   const grp={};pool.forEach(r=>(grp[r.date+r.type]=grp[r.date+r.type]||[]).push(r));
+  const N=BT.mode==='open'?1:+$('#btHold').value, useStop=BT.stop==='on';
+  // 한 건의 수익률: 시가 매도 / N일째 종가 매도(손절 적용 시 그 전에 손절가에 걸리면 손절)
+  const retOf=r=>{
+    if(BT.mode==='open') return r.r_open;
+    if(!r.c) return N===1?(useStop?r.r_close:null):null;            // 이전 형식 데이터
+    if(useStop&&r.s&&r.s<=N) return r.sr;
+    return r.c.length>=N?r.c[N-1]:null;                              // 아직 N일이 안 지난 매매는 제외
+  };
   const rs=Object.values(grp).flatMap(g=>g.sort((a,b)=>b.score-a.score).slice(0,top))
-               .map(r=>({...r,ret:(BT.mode==='open'?r.r_open:r.r_close)-F}));
+               .map(r=>{const v=retOf(r);return v==null?null:{...r,ret:v-F,stopped:useStop&&BT.mode!=='open'&&r.s&&r.s<=N};}).filter(Boolean);
   if(!rs.length){$('#btHero').innerHTML='<div class="empty">조건에 맞는 매매가 없습니다. 최소 점수를 낮추거나 기간을 늘려 보세요.</div>';
     ['#btBucket','#btMonth','#btMkt'].forEach(x=>$(x).innerHTML='');return;}
   const byDay={};rs.forEach(r=>(byDay[r.date]=byDay[r.date]||[]).push(r.ret));
-  const days=Object.keys(byDay).sort();let eq=1,peak=1,mdd=0;const curve=[];
-  for(const d of days){const m=byDay[d].reduce((a,b)=>a+b,0)/byDay[d].length/100;eq*=1+m;peak=Math.max(peak,eq);mdd=Math.min(mdd,eq/peak-1);curve.push([d,(eq-1)*100]);}
+  const days=Object.keys(byDay).sort();
+  // 자금곡선: 자금을 N등분해 매일 1/N씩 새로 사고 N일 뒤 판다고 가정 (N=1이면 매일 전액)
+  const cal=(BENCH&&BENCH.kospi?BENCH.kospi.map(x=>x[0]):[...new Set(ROWS.map(r=>r.date))]).slice().sort();
+  const ci=d=>{let lo=0,hi=cal.length;while(lo<hi){const m=(lo+hi)>>1;cal[m]<d?lo=m+1:hi=m;}return lo;};
+  const exits={};
+  for(const d of days){const m=byDay[d].reduce((a,b)=>a+b,0)/byDay[d].length/100;
+    const k=ci(d)+N, ed=k<cal.length?cal[k]:d;(exits[ed]=exits[ed]||[]).push(m);}
+  let eq=1,peak=1,mdd=0;const curve=[],mo={};
+  for(const d of Object.keys(exits).sort()){let f=1;exits[d].forEach(m=>f*=1+m/N);eq*=f;peak=Math.max(peak,eq);mdd=Math.min(mdd,eq/peak-1);curve.push([d,(eq-1)*100]);
+    const k=d.slice(0,7);mo[k]=(mo[k]||1)*f;}
   const cum=(eq-1)*100, S=stat(rs);
   const dayWin=days.filter(d=>byDay[d].reduce((a,b)=>a+b,0)>0).length/days.length*100;
-  const kc=benchCurve('kospi',days[0],days[days.length-1]), qc=benchCurve('kosdaq',days[0],days[days.length-1]);
+  const c0=days[0], c1=curve[curve.length-1][0];
+  const kc=benchCurve('kospi',c0,c1), qc=benchCurve('kosdaq',c0,c1);
+  const modeTxt=BT.mode==='open'?'다음날 시가 매도':`${N}일째 종가 매도 · ${useStop?'손절 적용':'손절 없음'}`;
+  const stopRate=rs.filter(r=>r.stopped).length/rs.length*100;
   const endv=c=>c.length?c[c.length-1][1]:null;
   const vs=[[ '코스피',endv(kc)],['코스닥',endv(qc)]].filter(x=>x[1]!=null).map(([n,v])=>`${n} <b class="${cls(v)}">${pct(v,1)}</b>`).join('&nbsp;&nbsp;');
-  $('#btHero').innerHTML=`<div class="mute" style="font-size:13px">${days[0].replaceAll('-','.')} ~ ${days[days.length-1].replaceAll('-','.')} 누적 수익${BT.mkt==='A'?'':` · ${MKT[BT.mkt]} 종목만`}</div>
+  $('#btHero').innerHTML=`<div class="mute" style="font-size:13px">${c0.replaceAll('-','.')} ~ ${c1.replaceAll('-','.')} 누적 수익${BT.mkt==='A'?'':` · ${MKT[BT.mkt]} 종목만`}<br>${modeTxt}</div>
     <div class="big ${cls(cum)}">${pct(cum,1)}</div>
     <div class="vs">${vs?'같은 기간 '+vs:''}</div>
     ${svgCurve(curve,kc,qc)}
     <div class="stats"><div>매매<b>${S.n}건</b></div><div>승률<b>${S.w.toFixed(0)}%</b></div>
     <div>건당 평균<b class="${cls(S.m)}">${pct(S.m)}</b></div><div>최대 낙폭<b class="dn">${(mdd*100).toFixed(1)}%</b></div></div>
-    <div class="note" style="margin-bottom:0">거래한 날 ${days.length}일 중 수익 난 날 ${dayWin.toFixed(0)}%</div>`;
+    <div class="note" style="margin-bottom:0">매수한 날 ${days.length}일 중 수익 난 날 ${dayWin.toFixed(0)}%${BT.mode!=='open'&&useStop?` · 보유 중 손절된 매매 ${stopRate.toFixed(0)}%`:''}</div>`;
   const tbl=(head,rows)=>`<table><tr><th>${head}</th><th>건수</th><th>승률</th><th>건당 평균</th></tr>`+
     rows.map(([n,g])=>{if(!g.length)return'';const s=stat(g);
       return `<tr><td>${n}</td><td>${s.n}</td><td>${s.w.toFixed(0)}%</td><td class="${cls(s.m)}">${pct(s.m)}</td></tr>`;}).join('')+'</table>';
   $('#btMkt').innerHTML=tbl('시장',[['코스피',rs.filter(r=>r.mkt==='K')],['코스닥',rs.filter(r=>r.mkt==='Q')]]);
   const cuts=[[80,999,'80점 이상'],[70,80,'70~79점'],[60,70,'60~69점'],[50,60,'50~59점'],[0,50,'50점 미만']];
   $('#btBucket').innerHTML=tbl('점수',cuts.map(([a,b,n])=>[n,rs.filter(r=>r.score>=a&&r.score<b)]));
-  const mo={};days.forEach(d=>{const k=d.slice(0,7);mo[k]=(mo[k]||1)*(1+byDay[d].reduce((a,b)=>a+b,0)/byDay[d].length/100);});
   const mv=Object.entries(mo).map(([k,v])=>[k,(v-1)*100]), mx=Math.max(1,...mv.map(x=>Math.abs(x[1])));
   $('#btMonth').innerHTML=mv.map(([k,v])=>`<div class="mbar"><span>${k.slice(2).replace('-','.')}</span><span class="t"><i style="${v>=0?`left:50%;width:${v/mx*50}%;background:var(--up)`:`right:50%;width:${-v/mx*50}%;background:var(--down)`}"></i></span><span class="v ${cls(v)}">${pct(v,1)}</span></div>`).join('');
 }
@@ -393,10 +419,10 @@ function svgCurve(c,k,q){
     <text x="${W-pr}" y="${H-4}" font-size="10" fill="var(--sub)" text-anchor="end">${c[c.length-1][0].slice(2).replaceAll('-','.')}</text>
   </svg>`;
 }
-['btScore','btTop','btFee'].forEach(id=>{const el=$('#'+id),out=$('#'+id+'V'),u={btScore:'점',btTop:'개',btFee:'%'}[id];
+['btScore','btTop','btFee','btHold'].forEach(id=>{const el=$('#'+id),out=$('#'+id+'V'),u={btScore:'점',btTop:'개',btFee:'%',btHold:'일'}[id];
   el.value=store.get(id,el.value);out.textContent=el.value+u;
   el.oninput=()=>{out.textContent=el.value+u;store.set(id,el.value);drawBT();if(id==='btFee')drawLog();};});
-[['btPer','per',1],['btType','type',0],['btMktSel','mkt',0],['btMode','mode',0]].forEach(([id,k,n])=>{
+[['btPer','per',1],['btType','type',0],['btMktSel','mkt',0],['btMode','mode',0],['btStop','stop',0]].forEach(([id,k,n])=>{
   BT[k]=store.get('bt_'+k,BT[k]);$$(`#${id} button`).forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v)===String(BT[k])));segBind(id,k,n);});
 
 /* ---------- 탭 ---------- */

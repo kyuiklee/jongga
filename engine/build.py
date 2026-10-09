@@ -102,13 +102,37 @@ def main():
     done["r_high"] = (done["n_high"] / done["close"] - 1) * 100
     done["stop_hit"] = (done["n_low"] <= done["stop"]).astype(int)
     done = done.sort_values(["date", "type", "rank"])
+
+    # ----- 보유 기간별 결과 (최대 HOLD_MAX 거래일) -----
+    # c: 1~N일째 종가 수익률 목록, s: 손절가에 처음 걸린 날(없으면 0), sr: 그때 매도 수익률
+    HOLD_MAX = 20
+    hn = {}
+    for c in done["code"].unique():
+        h = hist[c][["Open", "Low", "Close"]].astype(float).copy()
+        h.index = pd.to_datetime(h.index).normalize()
+        hn[c] = h[~h.index.duplicated(keep="last")].sort_index()
+    paths, sdays, srets = [], [], []
+    for r in done.itertuples():
+        h = hn[r.code]
+        pos = h.index.get_indexer([r.date])[0]
+        fut = h.iloc[pos + 1: pos + 1 + HOLD_MAX] if pos >= 0 else h.iloc[0:0]
+        paths.append([r2((x / r.close - 1) * 100) for x in fut["Close"]])
+        s, sr = 0, None
+        for j, (o, lo) in enumerate(zip(fut["Open"], fut["Low"]), 1):
+            if o <= r.stop:                      # 시가부터 손절가 아래 → 시가에 매도
+                s, sr = j, r2((o / r.close - 1) * 100); break
+            if lo <= r.stop:                     # 장중 손절가 터치 → 손절가에 매도
+                s, sr = j, r2((r.stop / r.close - 1) * 100); break
+        sdays.append(s); srets.append(sr)
+
     trades = {
-        "fields": ["date", "type", "rank", "code", "name", "score", "close", "chg", "r_open", "r_close", "r_high", "stop_hit", "mkt"],
-        "note": "수익률은 비용 차감 전. 앱에서 비용을 뺍니다.",
+        "fields": ["date", "type", "rank", "code", "name", "score", "close", "chg", "r_open", "r_close", "r_high", "stop_hit", "mkt",
+                   "c", "s", "sr"],
+        "note": "수익률은 비용 차감 전. 앱에서 비용을 뺍니다. c=보유 1~20일째 종가 수익률, s=손절 걸린 날, sr=손절 수익률",
         "rows": [[f"{r.date:%Y-%m-%d}", "B" if r.type == "돌파" else "P", int(r.rank), r.code, r.name, r2(r.score, 1),
                   int(r.close), r2(r.chg), r2(r.r_open), r2(r.r_close), r2(r.r_high), int(r.stop_hit),
-                  "Q" if r.market == "KOSDAQ" else "K"]
-                 for r in done.itertuples()],
+                  "Q" if r.market == "KOSDAQ" else "K", p, s, sr]
+                 for r, p, s, sr in zip(done.itertuples(), paths, sdays, srets)],
     }
     bench = {k.lower(): [[f"{d:%Y-%m-%d}", r2(v)] for d, v in s.items() if d >= days.min()] for k, s in idx.items()}
 
