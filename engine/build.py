@@ -136,8 +136,31 @@ def main():
     }
     bench = {k.lower(): [[f"{d:%Y-%m-%d}", r2(v)] for d, v in s.items() if d >= days.min()] for k, s in idx.items()}
 
+    # ----- 시장 상황별 성과: 추천일에 해당 시장 지수가 얼마나 움직였는지 구간별로 집계 -----
+    ichg = {k: (s.pct_change() * 100) for k, s in idx.items()}
+    reg = done[["date", "type", "market", "r_open", "r_close"]].copy()
+    reg["d5"] = [p[4] if len(p) >= 5 else np.nan for p in paths]
+    reg["idx_chg"] = [ichg.get(m, pd.Series(dtype=float)).get(d, np.nan) for d, m in zip(reg["date"], reg["market"])]
+    bins = [-99, -2, -1, 0, 1, 99]
+    labels = ["-2% 이하", "-2~-1%", "-1~0%", "0~+1%", "+1% 이상"]
+    reg["bucket"] = pd.cut(reg["idx_chg"], bins=bins, labels=labels)
+    fee = P["fee_pct"]
+    regime = {"note": "추천일 해당 시장(코스피/코스닥) 지수 등락률 구간별. 비용 차감 후. d5=5일째 종가(손절 없음)", "fee": fee, "rows": []}
+    for t in ("돌파", "눌림", "전체"):
+        g0 = reg if t == "전체" else reg[reg["type"] == t]
+        for lb in labels:
+            g = g0[g0["bucket"] == lb]
+            if not len(g):
+                continue
+            row = {"type": t, "bucket": lb, "n": int(len(g)), "days": int(g["date"].nunique())}
+            for col in ("r_open", "r_close", "d5"):
+                v = g[col].dropna() - fee
+                row[col + "_win"] = r2((v > 0).mean() * 100, 0) if len(v) else None
+                row[col + "_avg"] = r2(v.mean()) if len(v) else None
+            regime["rows"].append(row)
+
     os.makedirs(OUT, exist_ok=True)
-    for name, obj in (("today.json", today), ("trades.json", trades), ("bench.json", bench)):
+    for name, obj in (("today.json", today), ("trades.json", trades), ("bench.json", bench), ("regime.json", regime)):
         with open(os.path.join(OUT, name), "w", encoding="utf-8") as f:
             json.dump(obj, f, ensure_ascii=False, separators=(",", ":"))
     print(f"저장: 오늘 추천 돌파 {len(today['breakout'])} / 눌림 {len(today['pullback'])}, "
