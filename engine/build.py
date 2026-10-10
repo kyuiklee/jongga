@@ -91,6 +91,9 @@ def main():
         "breakout": [card(r) for r in today_rows[today_rows["type"] == "돌파"].itertuples()],
         "pullback": [card(r) for r in today_rows[today_rows["type"] == "눌림"].itertuples()],
         "config": {k: P[k] for k in ("top_n", "min_amount_eok", "min_chg", "max_chg", "fee_pct")},
+        # 내 전략용: 유형별 상위 20개 후보 (시장 구분 포함)
+        "cands": [{**card(r), "type": "B" if r.type == "돌파" else "P", "mkt": "Q" if r.market == "KOSDAQ" else "K"}
+                  for r in T[T["date"] == trade_day].sort_values(["type", "rank"]).itertuples()],
     }
 
     # ----- 과거 추천 + 다음날 결과 (검증 기록·백테스트 공용) -----
@@ -127,11 +130,11 @@ def main():
 
     trades = {
         "fields": ["date", "type", "rank", "code", "name", "score", "close", "chg", "r_open", "r_close", "r_high", "stop_hit", "mkt",
-                   "c", "s", "sr"],
+                   "c", "s", "sr", "stop"],
         "note": "수익률은 비용 차감 전. 앱에서 비용을 뺍니다. c=보유 1~20일째 종가 수익률, s=손절 걸린 날, sr=손절 수익률",
         "rows": [[f"{r.date:%Y-%m-%d}", "B" if r.type == "돌파" else "P", int(r.rank), r.code, r.name, r2(r.score, 1),
                   int(r.close), r2(r.chg), r2(r.r_open), r2(r.r_close), r2(r.r_high), int(r.stop_hit),
-                  "Q" if r.market == "KOSDAQ" else "K", p, s, sr]
+                  "Q" if r.market == "KOSDAQ" else "K", p, s, sr, int(r.stop)]
                  for r, p, s, sr in zip(done.itertuples(), paths, sdays, srets)],
     }
     bench = {k.lower(): [[f"{d:%Y-%m-%d}", r2(v)] for d, v in s.items() if d >= days.min()] for k, s in idx.items()}

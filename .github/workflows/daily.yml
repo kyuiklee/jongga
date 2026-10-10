@@ -42,9 +42,6 @@ jobs:
       - name: 검색 실행
         run: python engine/build.py
 
-      - name: 백테스트 검증 자료
-        run: python engine/check.py || true
-
       - name: 일봉 캐시 저장
         if: always()
         uses: actions/cache/save@v4
